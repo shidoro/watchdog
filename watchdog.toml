@@ -1,0 +1,9 @@
+[extend]
+files = [
+  { extendable_type = "Git", path = ".gitignore" },
+]
+
+[exclude]
+files = [
+  { path = ".git" },
+]
