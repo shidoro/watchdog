@@ -55,10 +55,13 @@ pub enum ExtendableType {
 impl Extendable for ExtendableType {
     fn matcher(&self, path: &Path, is_dir: bool) -> bool {
         match self {
-            ExtendableType::Git(wrapper) => wrapper
+            ExtendableType::Git(wrapper) => { 
+                // println!("{path:?} matched against {:?}", wrapper.0.path());
+
+                wrapper
                 .0
-                .matched_path_or_any_parents(path, is_dir)
-                .is_ignore(),
+                .matched_path_or_any_parents(path , is_dir)
+                .is_ignore() }
         }
     }
 }

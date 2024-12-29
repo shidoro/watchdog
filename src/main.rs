@@ -22,15 +22,15 @@ fn main() -> Result<()> {
 }
 
 fn watchdog(config: &Config) -> Result<()> {
-    let root_path = config.root();
     let (tx, rx) = channel();
 
-    let mut child_proc = start_app();
+    let mut child_proc = start_app(false);
 
     let notify_config = NotifyConfig::default();
     let mut watcher =
         RecommendedWatcher::new(tx, NotifyConfig::with_compare_contents(notify_config, true))?;
 
+    let root_path = config.root();
     watcher.watch(root_path, RecursiveMode::Recursive)?;
 
     for res in rx {
@@ -47,7 +47,16 @@ fn run_child() -> Result<()> {
     Ok(())
 }
 
-fn start_app() -> Option<Child> {
+fn start_app(restart: bool) -> Option<Child> {
+    println!(
+        "{}...",
+        if restart { "Recompiling" } else { "Compiling" }
+    );
+    let handle = Command::new("cargo")
+        .arg("build")
+        .spawn();
+    let _ = handle.unwrap().wait();
+    println!("{}...", if restart { "Restart" } else { "Start" });
     Command::new("cargo")
         .env("WATCHDOG_CHILD_PROC", "1")
         .arg("run")
@@ -61,7 +70,7 @@ fn handler(_: Event, proc: &mut Option<Child>) {
         let _ = child.wait();
     }
 
-    *proc = start_app();
+    *proc = start_app(true);
 }
 
 fn event_handler(event: Event, proc: &mut Option<Child>, config: &Config) {
@@ -92,7 +101,6 @@ fn should_ignore_event(config: &Config, event: &Event, is_dir: bool) -> bool {
                 return true;
             }
         }
-
         extendables
             .iter()
             .any(|extendable| extendable.matcher(path, is_dir))
