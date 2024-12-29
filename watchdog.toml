@@ -1,6 +1,6 @@
 [extend]
-files = [
-  { extendable_type = "Git", path = ".gitignore" },
+extendables = [
+  { extendable_type = "git", path = ".gitignore" },
 ]
 
 [exclude]

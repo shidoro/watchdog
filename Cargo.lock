@@ -252,6 +252,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "585d3cb5e12e01aed9e8a1f70d5c6b5e86fe2a6e48fc8cd0b3e0b8df6f6eb174"
 dependencies = [
  "instant",
+ "serde",
 ]
 
 [[package]]
@@ -410,7 +411,6 @@ dependencies = [
  "ignore",
  "notify",
  "serde",
- "serde_derive",
  "toml",
 ]
 
