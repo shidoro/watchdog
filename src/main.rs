@@ -16,7 +16,7 @@ fn main() -> Result<()> {
     let config = config::load_config().map_err(|err| Error::generic(&format!("{err}")))?;
 
     match var("WATCHDOG_CHILD_PROC") {
-        Ok(_) => run_child(),
+        Ok(_) => Ok(()),
         Err(_) => watchdog(&config),
     }
 }
@@ -43,19 +43,15 @@ fn watchdog(config: &Config) -> Result<()> {
     Ok(())
 }
 
-fn run_child() -> Result<()> {
-    Ok(())
-}
-
 fn start_app(restart: bool) -> Option<Child> {
-    println!(
-        "{}...",
-        if restart { "Recompiling" } else { "Compiling" }
-    );
-    let handle = Command::new("cargo")
+    let _ = Command::new("clear").spawn().unwrap().wait();
+    println!("{}...", if restart { "Recompiling" } else { "Compiling" });
+    let _ = Command::new("cargo")
         .arg("build")
-        .spawn();
-    let _ = handle.unwrap().wait();
+        .spawn()
+        .expect("Something went wrong when building cargo")
+        .wait();
+
     println!("{}...", if restart { "Restart" } else { "Start" });
     Command::new("cargo")
         .env("WATCHDOG_CHILD_PROC", "1")
