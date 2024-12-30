@@ -1,11 +1,11 @@
-use config::{Config, Extendable};
+use config::{load_config, Config, Extendable};
 use notify::{
     event::{CreateKind, ModifyKind, RemoveKind},
     Config as NotifyConfig, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Result,
     Watcher,
 };
 use std::{
-    env::var,
+    // env::var,
     process::{Child, Command},
     sync::mpsc::channel,
 };
@@ -13,29 +13,25 @@ use std::{
 mod config;
 
 fn main() -> Result<()> {
-    let config = config::load_config().map_err(|err| Error::generic(&format!("{err}")))?;
+    let config = load_config().map_err(|err| Error::generic(&format!("{err}")))?;
 
-    match var("WATCHDOG_CHILD_PROC") {
-        Ok(_) => Ok(()),
-        Err(_) => watchdog(&config),
-    }
+    watchdog(&config)
 }
 
 fn watchdog(config: &Config) -> Result<()> {
+    let mut child_proc = watch(config, false);
+
     let (tx, rx) = channel();
-
-    let mut child_proc = start_app(false);
-
     let notify_config = NotifyConfig::default();
     let mut watcher =
         RecommendedWatcher::new(tx, NotifyConfig::with_compare_contents(notify_config, true))?;
 
-    let root_path = config.root();
-    watcher.watch(root_path, RecursiveMode::Recursive)?;
+    let root = config.root();
+    watcher.watch(root, RecursiveMode::Recursive)?;
 
     for res in rx {
         match res {
-            Ok(event) => event_handler(event, &mut child_proc, config),
+            Ok(event) => event_handler(event, config, &mut child_proc),
             Err(e) => eprintln!("Watch error: {e:?}"),
         }
     }
@@ -43,33 +39,33 @@ fn watchdog(config: &Config) -> Result<()> {
     Ok(())
 }
 
-fn start_app(restart: bool) -> Option<Child> {
+fn watch(config: &Config, restart: bool) -> Option<Child> {
     let _ = Command::new("clear").spawn().unwrap().wait();
-    println!("{}...", if restart { "Recompiling" } else { "Compiling" });
-    let _ = Command::new("cargo")
-        .arg("build")
-        .spawn()
-        .expect("Something went wrong when building cargo")
-        .wait();
+    let run = config.to_run();
+    if run.precompile() {
+        println!("{}...", if restart { "Recompiling" } else { "Compiling" });
+        let build = config.to_build();
+        let _ = Command::new(build.command())
+            .args(build.args())
+            .spawn()
+            .expect("Something went wrong when building cargo")
+            .wait();
+    }
 
     println!("{}...", if restart { "Restart" } else { "Start" });
-    Command::new("cargo")
-        .env("WATCHDOG_CHILD_PROC", "1")
-        .arg("run")
-        .spawn()
-        .ok()
+    Command::new(run.command()).args(run.args()).spawn().ok()
 }
 
-fn handler(_: Event, proc: &mut Option<Child>) {
-    if let Some(mut child) = proc.take() {
+fn handler(config: &Config, child_proc: &mut Option<Child>) {
+    if let Some(mut child) = child_proc.take() {
         let _ = child.kill();
         let _ = child.wait();
     }
 
-    *proc = start_app(true);
+    *child_proc = watch(config, true);
 }
 
-fn event_handler(event: Event, proc: &mut Option<Child>, config: &Config) {
+fn event_handler(event: Event, config: &Config, child_proc: &mut Option<Child>) {
     let should_ignore = match &event.kind {
         EventKind::Create(create_kind) => {
             should_ignore_event(config, &event, create_kind == &CreateKind::Folder)
@@ -83,7 +79,7 @@ fn event_handler(event: Event, proc: &mut Option<Child>, config: &Config) {
         _ => true,
     };
     if !should_ignore {
-        handler(event, proc);
+        handler(config, child_proc);
     }
 }
 

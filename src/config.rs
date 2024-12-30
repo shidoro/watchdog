@@ -58,12 +58,10 @@ pub enum ExtendableType {
 impl Extendable for ExtendableType {
     fn matcher(&self, path: &Path, is_dir: bool) -> bool {
         match self {
-            ExtendableType::Git(wrapper) => {
-                let matched = wrapper.0.matched_path_or_any_parents(path, is_dir);
-
-                // println!("{matched:?} - {path:?} matched against {:?}", wrapper.0.path());
-                matched.is_ignore()
-            }
+            ExtendableType::Git(wrapper) => wrapper
+                .0
+                .matched_path_or_any_parents(path, is_dir)
+                .is_ignore(),
         }
     }
 }
@@ -74,6 +72,8 @@ pub struct Config {
     exclude: Exclude,
     #[serde(default)]
     root: PathBuf,
+    run: Run,
+    build: Build,
 }
 
 impl Config {
@@ -87,6 +87,14 @@ impl Config {
 
     pub fn root(&self) -> &PathBuf {
         &self.root
+    }
+
+    pub fn to_run(&self) -> &Run {
+        &self.run
+    }
+
+    pub fn to_build(&self) -> &Build {
+        &self.build
     }
 
     fn setup(&mut self, root: PathBuf) {
@@ -131,8 +139,46 @@ impl Exclude {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct IgnorablePath {
+struct IgnorablePath {
     path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Run {
+    command: String,
+    args: Vec<String>,
+    #[serde(default)]
+    precompile: bool,
+}
+
+impl Run {
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    pub fn args(&self) -> &Vec<String> {
+        &self.args
+    }
+    
+    pub fn precompile(&self) -> bool {
+        self.precompile
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Build {
+    command: String,
+    args: Vec<String>,
+}
+
+impl Build {
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    pub fn args(&self) -> &Vec<String> {
+        &self.args
+    }
 }
 
 pub fn load_config() -> Result<Config, Box<dyn Error>> {

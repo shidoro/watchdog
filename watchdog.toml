@@ -7,3 +7,11 @@ extendables = [
 files = [
   { path = ".git" },
 ]
+
+[run]
+command = "cargo"
+args = [ "run" ]
+
+[build]
+command = "cargo"
+args = [ "build" ]
