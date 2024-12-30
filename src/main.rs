@@ -5,7 +5,6 @@ use notify::{
     Watcher,
 };
 use std::{
-    // env::var,
     process::{Child, Command},
     sync::mpsc::channel,
 };
@@ -47,13 +46,18 @@ fn watch(config: &Config, restart: bool) -> Option<Child> {
         let build = config.to_build();
         let _ = Command::new(build.command())
             .args(build.args())
+            .current_dir(build.origin())
             .spawn()
             .expect("Something went wrong when building cargo")
             .wait();
     }
 
     println!("{}...", if restart { "Restart" } else { "Start" });
-    Command::new(run.command()).args(run.args()).spawn().ok()
+    Command::new(run.command())
+        .args(run.args())
+        .current_dir(run.origin())
+        .spawn()
+        .ok()
 }
 
 fn handler(config: &Config, child_proc: &mut Option<Child>) {

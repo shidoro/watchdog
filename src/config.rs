@@ -1,8 +1,14 @@
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
-use notify::{Error as NotifyError, Result as NotifyResult};
 use serde::de::Visitor;
 use serde::Deserialize;
-use std::{env::current_dir, error::Error, fs, path::PathBuf, process::Command};
+use std::{
+    env::current_dir,
+    error::Error,
+    fs,
+    io::{Error as IoError, ErrorKind as IoErrorKind},
+    path::PathBuf,
+    process::Command,
+};
 use std::{fmt::Debug, path::Path};
 
 #[derive(Debug)]
@@ -97,7 +103,7 @@ impl Config {
         &self.build
     }
 
-    fn setup(&mut self, root: PathBuf) {
+    fn setup(&mut self, root: PathBuf) -> Result<(), Box<dyn Error>> {
         let ignore_files: Vec<String> = self
             .exclude
             .files
@@ -106,7 +112,11 @@ impl Config {
             .collect();
 
         self.root = root;
+        self.build.canonicalise()?;
+        self.run.canonicalise()?;
         self.exclude.set_exclude_files(ignore_files);
+
+        Ok(())
     }
 }
 
@@ -149,6 +159,8 @@ pub struct Run {
     args: Vec<String>,
     #[serde(default)]
     precompile: bool,
+    #[serde(default)]
+    origin: PathBuf,
 }
 
 impl Run {
@@ -159,9 +171,22 @@ impl Run {
     pub fn args(&self) -> &Vec<String> {
         &self.args
     }
-    
+
     pub fn precompile(&self) -> bool {
         self.precompile
+    }
+
+    pub fn origin(&self) -> &PathBuf {
+        &self.origin
+    }
+
+    fn canonicalise(&mut self) -> Result<(), Box<dyn Error>> {
+        let origin = fs::canonicalize(self.origin())
+            .map_err(|err| format!("Error while canonicalizing {:?}: {err}", self.origin()))?;
+
+        self.origin = origin;
+
+        Ok(())
     }
 }
 
@@ -169,6 +194,8 @@ impl Run {
 pub struct Build {
     command: String,
     args: Vec<String>,
+    #[serde(default)]
+    origin: PathBuf,
 }
 
 impl Build {
@@ -178,6 +205,19 @@ impl Build {
 
     pub fn args(&self) -> &Vec<String> {
         &self.args
+    }
+
+    pub fn origin(&self) -> &PathBuf {
+        &self.origin
+    }
+
+    fn canonicalise(&mut self) -> Result<(), Box<dyn Error>> {
+        let origin = fs::canonicalize(self.origin())
+            .map_err(|err| format!("Error while canonicalizing {:?}: {err}", self.origin()))?;
+
+        self.origin = origin;
+
+        Ok(())
     }
 }
 
@@ -193,24 +233,29 @@ pub fn load_config() -> Result<Config, Box<dyn Error>> {
         )
     })?;
 
-    config.setup(root);
+    config.setup(root)?;
     Ok(config)
 }
 
-fn find_root() -> NotifyResult<PathBuf> {
-    let mut root_path = String::new();
+fn find_root() -> Result<PathBuf, Box<dyn Error>> {
+    let mut root_path = None;
     if let Ok(git_root_path) = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
     {
-        root_path += std::str::from_utf8(&git_root_path.stdout).unwrap().trim();
+        root_path = Some(std::str::from_utf8(&git_root_path.stdout)?.to_owned())
     } else if let Ok(cargo_root_path) = current_dir() {
-        root_path += cargo_root_path.to_str().unwrap().trim();
+        root_path = cargo_root_path.to_str().map(|s| s.into());
     }
 
-    if root_path.is_empty() {
-        return Err(NotifyError::generic("Could not find the root project"));
-    }
+    let root_path = root_path.ok_or_else(|| {
+        Box::new(IoError::new(
+            IoErrorKind::NotFound,
+            "Could not find the root project",
+        ))
+    })?;
 
-    Ok(PathBuf::from(root_path))
+    let root_path = fs::canonicalize(root_path.trim())
+        .map_err(|err| format!("Error while canonicalizing {root_path:?}: {err}"))?;
+    Ok(root_path)
 }
