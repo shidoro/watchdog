@@ -2,7 +2,7 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde::de::Visitor;
 use serde::Deserialize;
 use std::{
-    env::current_dir,
+    env::{current_dir, set_current_dir},
     error::Error,
     fs,
     io::{Error as IoError, ErrorKind as IoErrorKind},
@@ -103,6 +103,11 @@ impl Config {
         &self.build
     }
 
+    fn canonicalise(&mut self) {
+        self.build.canonicalise(&self.root);
+        self.run.canonicalise(&self.root);
+    }
+
     fn setup(&mut self, root: PathBuf) -> Result<(), Box<dyn Error>> {
         let ignore_files: Vec<String> = self
             .exclude
@@ -112,8 +117,8 @@ impl Config {
             .collect();
 
         self.root = root;
-        self.build.canonicalise()?;
-        self.run.canonicalise()?;
+        let _ = set_current_dir(self.root());
+        self.canonicalise();
         self.exclude.set_exclude_files(ignore_files);
 
         Ok(())
@@ -180,13 +185,18 @@ impl Run {
         &self.origin
     }
 
-    fn canonicalise(&mut self) -> Result<(), Box<dyn Error>> {
-        let origin = fs::canonicalize(self.origin())
-            .map_err(|err| format!("Error while canonicalizing {:?}: {err}", self.origin()))?;
+    fn canonicalise(&mut self, root: &Path) {
+        let origin = fs::canonicalize(root.join(self.origin())).map_err(|err| {
+            eprintln!(
+                "Error while canonicalising run origin ({:?}): {err:?}",
+                self.origin()
+            );
+            err
+        });
 
-        self.origin = origin;
-
-        Ok(())
+        if let Ok(origin) = origin {
+            self.origin = origin;
+        }
     }
 }
 
@@ -211,13 +221,18 @@ impl Build {
         &self.origin
     }
 
-    fn canonicalise(&mut self) -> Result<(), Box<dyn Error>> {
-        let origin = fs::canonicalize(self.origin())
-            .map_err(|err| format!("Error while canonicalizing {:?}: {err}", self.origin()))?;
+    fn canonicalise(&mut self, root: &Path) {
+        let origin = fs::canonicalize(root.join(self.origin())).map_err(|err| {
+            eprintln!(
+                "Error while canonicalising build origin ({:?}): {err:?}",
+                self.origin()
+            );
+            err
+        });
 
-        self.origin = origin;
-
-        Ok(())
+        if let Ok(origin) = origin {
+            self.origin = origin;
+        }
     }
 }
 
@@ -255,7 +270,5 @@ fn find_root() -> Result<PathBuf, Box<dyn Error>> {
         ))
     })?;
 
-    let root_path = fs::canonicalize(root_path.trim())
-        .map_err(|err| format!("Error while canonicalizing {root_path:?}: {err}"))?;
-    Ok(root_path)
+    Ok(PathBuf::from(root_path.trim()))
 }
