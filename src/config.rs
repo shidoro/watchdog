@@ -28,7 +28,10 @@ impl<'de> serde::Deserialize<'de> for GitignoreSerde {
             {
                 let root = find_root().unwrap_or_default();
                 let mut builder = GitignoreBuilder::new(&root);
-                builder.add(v);
+                let err = builder.add(root.join(v));
+                if err.is_some() {
+                    eprintln!("Something went wrong with adding '{v}' to the path {root:?}. GitignoreBuilder will now be empty.\nError: {err:?}")
+                }
                 let git = builder
                     .build()
                     .map_err(|err| E::custom(format!("Failed to build Gitignore: {err}")))?;
@@ -55,13 +58,12 @@ pub enum ExtendableType {
 impl Extendable for ExtendableType {
     fn matcher(&self, path: &Path, is_dir: bool) -> bool {
         match self {
-            ExtendableType::Git(wrapper) => { 
-                // println!("{path:?} matched against {:?}", wrapper.0.path());
+            ExtendableType::Git(wrapper) => {
+                let matched = wrapper.0.matched_path_or_any_parents(path, is_dir);
 
-                wrapper
-                .0
-                .matched_path_or_any_parents(path , is_dir)
-                .is_ignore() }
+                // println!("{matched:?} - {path:?} matched against {:?}", wrapper.0.path());
+                matched.is_ignore()
+            }
         }
     }
 }
@@ -157,7 +159,7 @@ fn find_root() -> NotifyResult<PathBuf> {
     {
         root_path += std::str::from_utf8(&git_root_path.stdout).unwrap().trim();
     } else if let Ok(cargo_root_path) = current_dir() {
-        root_path += cargo_root_path.to_str().unwrap();
+        root_path += cargo_root_path.to_str().unwrap().trim();
     }
 
     if root_path.is_empty() {
