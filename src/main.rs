@@ -1,12 +1,14 @@
 use config::{load_config, Config, Extendable};
 use notify::{
-    event::{CreateKind, ModifyKind, RemoveKind},
+    event::{CreateKind, RemoveKind},
     Config as NotifyConfig, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Result,
     Watcher,
 };
 use std::{
     process::{Child, Command},
     sync::mpsc::channel,
+    thread,
+    time::Duration,
 };
 
 mod config;
@@ -28,14 +30,23 @@ fn watchdog(config: &Config) -> Result<()> {
     let root = config.root();
     watcher.watch(root, RecursiveMode::Recursive)?;
 
-    for res in rx {
+    loop {
+        // there is an assumption here that when performing an operation such as creating/removing
+        // or saving a file, the first event will always contain the path we're interested in
+        let res = rx.recv();
         match res {
-            Ok(event) => event_handler(event, config, &mut child_proc),
-            Err(e) => eprintln!("Watch error: {e:?}"),
+            Ok(Ok(event)) => event_handler(event, config, &mut child_proc),
+            err => eprintln!("Watch error: {err:?}"),
+        }
+
+        // there's usually more events happening in the background e.g. git updating some internal files
+        // there's no need to react on those events since the process has just been reloaded
+        // so discard all of them; it's highly unlikely to make two changes in under half a second
+        {
+            thread::sleep(Duration::from_millis(500));
+            while rx.try_recv().is_ok() {}
         }
     }
-
-    Ok(())
 }
 
 fn watch(config: &Config, restart: bool) -> Option<Child> {
@@ -77,9 +88,7 @@ fn event_handler(event: Event, config: &Config, child_proc: &mut Option<Child>) 
         EventKind::Remove(remove_kind) => {
             should_ignore_event(config, &event, remove_kind == &RemoveKind::Folder)
         }
-        EventKind::Modify(ModifyKind::Data(_)) | EventKind::Modify(ModifyKind::Name(_)) => {
-            should_ignore_event(config, &event, false)
-        }
+        EventKind::Modify(_) => should_ignore_event(config, &event, false),
         _ => true,
     };
     if !should_ignore {
