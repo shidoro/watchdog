@@ -79,7 +79,8 @@ pub struct Config {
     #[serde(default)]
     root: PathBuf,
     run: Run,
-    build: Build,
+    #[serde(default)]
+    build: Option<Build>,
 }
 
 impl Config {
@@ -99,12 +100,14 @@ impl Config {
         &self.run
     }
 
-    pub fn to_build(&self) -> &Build {
+    pub fn to_build(&self) -> &Option<Build> {
         &self.build
     }
 
     fn canonicalise(&mut self) {
-        self.build.canonicalise(&self.root);
+        if let Some(build) = self.build.as_mut() {
+            build.canonicalise(&self.root);
+        }
         self.run.canonicalise(&self.root);
     }
 
@@ -200,7 +203,7 @@ impl Run {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct Build {
     command: String,
     args: Vec<String>,

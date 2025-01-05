@@ -1,4 +1,5 @@
 use config::{load_config, Config, Extendable};
+use core::panic;
 use notify::{
     event::{CreateKind, RemoveKind},
     Config as NotifyConfig, Error, Event, EventKind, RecommendedWatcher, RecursiveMode, Result,
@@ -53,8 +54,12 @@ fn watch(config: &Config, restart: bool) -> Option<Child> {
     let _ = Command::new("clear").spawn().unwrap().wait();
     let run = config.to_run();
     if run.precompile() {
-        println!("{}...", if restart { "Recompiling" } else { "Compiling" });
         let build = config.to_build();
+        if build.is_none() {
+            panic!("precompile flag is on, but no [build] configuration was provided.");
+        }
+        println!("{}...", if restart { "Recompiling" } else { "Compiling" });
+        let build = build.as_ref().unwrap();
         let _ = Command::new(build.command())
             .args(build.args())
             .current_dir(build.origin())
