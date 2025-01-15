@@ -6,6 +6,7 @@ use notify::{
     Watcher,
 };
 use std::{
+    path::PathBuf,
     process::{Child, Command},
     sync::mpsc::channel,
     thread,
@@ -15,12 +16,12 @@ use std::{
 mod config;
 
 fn main() -> Result<()> {
-    let config = load_config().map_err(|err| Error::generic(&format!("{err}")))?;
+    let mut config = load_config().map_err(|err| Error::generic(&format!("{err}")))?;
 
-    watchdog(&config)
+    watchdog(&mut config)
 }
 
-fn watchdog(config: &Config) -> Result<()> {
+fn watchdog(config: &mut Config) -> Result<()> {
     let mut child_proc = watch(config, false);
 
     let (tx, rx) = channel();
@@ -76,16 +77,31 @@ fn watch(config: &Config, restart: bool) -> Option<Child> {
         .ok()
 }
 
-fn handler(config: &Config, child_proc: &mut Option<Child>) {
+fn handler(event: Event, config: &mut Config, child_proc: &mut Option<Child>) {
     if let Some(mut child) = child_proc.take() {
         let _ = child.kill();
         let _ = child.wait();
     }
 
+    if should_reload_config(&event) {
+        match load_config() {
+            Ok(new_config) => *config = new_config,
+            Err(err) => eprintln!("Error loading new config: {:?}", err),
+        }
+    }
+
     *child_proc = watch(config, true);
 }
 
-fn event_handler(event: Event, config: &Config, child_proc: &mut Option<Child>) {
+fn should_reload_config(event: &Event) -> bool {
+    let watchdog = PathBuf::from("watchdog.toml");
+    event
+        .paths
+        .iter()
+        .any(|path| path.file_name().unwrap().eq(watchdog.file_name().unwrap()))
+}
+
+fn event_handler(event: Event, config: &mut Config, child_proc: &mut Option<Child>) {
     let should_ignore = match &event.kind {
         EventKind::Create(create_kind) => {
             should_ignore_event(config, &event, create_kind == &CreateKind::Folder)
@@ -97,7 +113,7 @@ fn event_handler(event: Event, config: &Config, child_proc: &mut Option<Child>) 
         _ => true,
     };
     if !should_ignore {
-        handler(config, child_proc);
+        handler(event, config, child_proc);
     }
 }
 
