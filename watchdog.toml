@@ -8,10 +8,12 @@ files = [
   { path = ".git" },
 ]
 
-[run]
+[exec]
 command = "cargo"
 args = [ "run" ]
 
-[build]
-command = "cargo"
-args = [ "build" ]
+[exec_pre]
+when = "always"
+commands = [
+  { command = "cargo", args = [ "build" ] },
+]
