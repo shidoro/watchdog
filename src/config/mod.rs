@@ -5,22 +5,16 @@ use args_opt::{
     ArgsOpt, ArgsOptExec, ArgsOptExecPre, ArgsOptExtend, ArgsOptExtendableType, ArgsOptWhen,
 };
 use clap::Parser;
-use file_opt::GitignoreSerde;
-pub use file_opt::{
+use file_opt::opt::GitignoreSerde;
+pub use file_opt::opt::{
     Extendable, ExtendableType, FileOpt, FileOptExclude, FileOptExec, FileOptExecPre,
     FileOptExtend, FileOptWhen,
 };
 use ignore::gitignore::GitignoreBuilder;
-use std::{
-    env::current_dir,
-    error::Error,
-    fs,
-    io::{Error as IoError, ErrorKind as IoErrorKind},
-    path::PathBuf,
-    process::Command,
-    str::FromStr,
-};
-use std::{fmt::Debug, path::Path};
+use std::fmt::Debug;
+use std::{error::Error, fs, path::PathBuf, str::FromStr};
+
+use crate::root::ROOT;
 
 #[derive(Debug, Default)]
 pub struct Config {
@@ -28,14 +22,11 @@ pub struct Config {
     exec_pre: Option<ExecPre>,
     exclude: Exclude,
     extend: Extend,
-    root: PathBuf,
 }
 
 impl Config {
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        let mut config = Self::default();
-        let root = find_root()?;
-        config.root = root;
+        let config = Self::default();
 
         let file_opt = FileOpt::parse();
         let args_opt = ArgsOpt::parse();
@@ -131,10 +122,6 @@ impl Config {
         &self.exclude
     }
 
-    pub fn root(&self) -> &PathBuf {
-        &self.root
-    }
-
     pub fn to_exec(&self) -> &Exec {
         &self.exec
     }
@@ -145,9 +132,9 @@ impl Config {
 
     fn canonicalise(&mut self) {
         if let Some(exec_pre) = self.exec_pre.as_mut() {
-            exec_pre.canonicalise(&self.root);
+            exec_pre.canonicalise();
         }
-        self.exec.canonicalise(&self.root);
+        self.exec.canonicalise();
     }
 }
 
@@ -197,7 +184,8 @@ impl Exec {
         &self.origin
     }
 
-    fn canonicalise(&mut self, root: &Path) {
+    fn canonicalise(&mut self) {
+        let root = ROOT.root();
         let origin = fs::canonicalize(root.join(self.origin())).map_err(|err| {
             eprintln!(
                 "Error while canonicalising exec origin ({:?}): {err:?}",
@@ -284,7 +272,8 @@ impl ExecPre {
         &self.origin
     }
 
-    fn canonicalise(&mut self, root: &Path) {
+    fn canonicalise(&mut self) {
+        let root = ROOT.root();
         let origin = fs::canonicalize(root.join(self.origin())).map_err(|err| {
             eprintln!(
                 "Error while canonicalising build origin ({:?}): {err:?}",
@@ -383,27 +372,6 @@ impl Extend {
     }
 }
 
-fn find_root() -> Result<PathBuf, Box<dyn Error>> {
-    let mut root_path = None;
-    if let Ok(git_root_path) = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        root_path = Some(std::str::from_utf8(&git_root_path.stdout)?.to_owned())
-    } else if let Ok(cargo_root_path) = current_dir() {
-        root_path = cargo_root_path.to_str().map(|s| s.into());
-    }
-
-    let root_path = root_path.ok_or_else(|| {
-        Box::new(IoError::new(
-            IoErrorKind::NotFound,
-            "Could not find the root project",
-        ))
-    })?;
-
-    Ok(PathBuf::from(root_path.trim()))
-}
-
 // FIXME: doesn't work with string commands like `watchdog --exec "cmd --my-var='space separated variable'"`
 fn parse_command_string(command: String) -> (Option<String>, Vec<String>) {
     if command.is_empty() {
@@ -429,8 +397,8 @@ impl TryFrom<ArgsOptExtend> for Extend {
                 .map(
                     |(opt_path, opt_extendable_type)| match opt_extendable_type {
                         ArgsOptExtendableType::Git => {
-                            let root = find_root().unwrap_or_default();
-                            let mut builder = GitignoreBuilder::new(&root);
+                            let root = ROOT.root();
+                            let mut builder = GitignoreBuilder::new(root);
                             let err = builder.add(root.join(opt_path));
                             if let Some(err) = err {
                                 return Err(err.to_string());

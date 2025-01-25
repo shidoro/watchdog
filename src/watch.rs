@@ -1,4 +1,4 @@
-use crate::config::{Config, ExecPre, Extendable, When};
+use crate::{config::{Config, ExecPre, Extendable, When}, root::ROOT};
 use notify::{
     event::{CreateKind, RemoveKind},
     Config as NotifyConfig, Event, EventKind, RecommendedWatcher, RecursiveMode, Result, Watcher,
@@ -19,7 +19,7 @@ pub fn watch(config: &mut Config) -> Result<()> {
     let mut watcher =
         RecommendedWatcher::new(tx, NotifyConfig::with_compare_contents(notify_config, true))?;
 
-    let root = config.root();
+    let root = ROOT.root();
     watcher.watch(root, RecursiveMode::Recursive)?;
 
     loop {

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.26", features = ["derive"] }
 ignore = "0.4.23"
+lazy_static = "1.5.0"
 notify = { version = "7.0.0", features = ["serde"] }
 serde = { version = "1.0.217", features = ["derive"] }
 toml = "0.8.19"
