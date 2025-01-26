@@ -1,36 +1,26 @@
-use super::{ProjectRoot, Root};
-use std::env::current_dir;
+use super::ProjectRoot;
+use std::{env::current_dir, path::PathBuf};
 
-#[derive(Default)]
 pub struct CurrentDir {
-    next: Option<Box<dyn ProjectRoot>>,
+    next: Option<()>,
 }
 
 impl CurrentDir {
     pub fn new() -> Self {
-        Self { next: None }
+        Self { next: Some(()) }
     }
 }
 
 impl ProjectRoot for CurrentDir {
-    fn find(&self, root: &mut Root) {
-        match current_dir() {
-            Ok(cur_dir) => {
-                root.errors.clear();
-                root.root = cur_dir;
-            }
-            _ => {
-                root.errors.push(
-                    "Tried searching for the root project through the current working directory"
-                        .into(),
-                );
-                if let Some(next) = self.next() {
-                    next.find(root)
-                }
-            }
-        };
+    type NextHandler = ();
+
+    fn find(&self) -> Result<PathBuf, String> {
+        current_dir().map_err(|_| {
+            "Tried searching for the root project through the current working directory".into()
+        })
     }
-    fn next(&self) -> &Option<Box<dyn ProjectRoot>> {
+
+    fn next(&self) -> &Option<()> {
         &self.next
     }
 }

@@ -1,48 +1,36 @@
-use super::{current_dir::CurrentDir, ProjectRoot, Root};
-use std::{process::Command, str};
+use super::{current_dir::CurrentDir, ProjectRoot};
+use std::{path::PathBuf, process::Command, str};
 
-#[derive(Default)]
 pub struct GitRoot {
-    next: Option<Box<dyn ProjectRoot>>,
+    next: Option<CurrentDir>,
 }
 
 impl GitRoot {
     pub fn new() -> Self {
         Self {
-            next: Some(Box::new(CurrentDir::new())),
+            next: Some(CurrentDir::new()),
         }
     }
 }
 
 impl ProjectRoot for GitRoot {
-    fn find(&self, root: &mut Root) {
-        let git_output = match Command::new("git")
+    type NextHandler = CurrentDir;
+
+    fn find(&self) -> Result<PathBuf, String> {
+        let error_msg = "Tried searching for the root project through git".into();
+        match Command::new("git")
             .args(["rev-parse", "--show-toplevel"])
             .output()
         {
             Ok(output) if output.status.success() => match str::from_utf8(&output.stdout) {
-                Ok(stdout) => Some(stdout.trim().into()),
-                _ => None,
+                Ok(stdout) => Ok(stdout.trim().into()),
+                _ => Err(error_msg),
             },
-            _ => None,
-        };
-
-        match git_output {
-            Some(output) => {
-                root.errors.clear();
-                root.root = output;
-            }
-            _ => {
-                root.errors
-                    .push("Tried searching for the root project through git".into());
-                if let Some(next) = self.next() {
-                    next.find(root)
-                }
-            }
-        };
+            _ => Err(error_msg),
+        }
     }
 
-    fn next(&self) -> &Option<Box<dyn ProjectRoot>> {
+    fn next(&self) -> &Option<CurrentDir> {
         &self.next
     }
 }
