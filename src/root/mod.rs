@@ -1,9 +1,10 @@
 mod current_dir;
 mod git_root;
+mod hg_root;
 mod no_root;
 
 use lazy_static::lazy_static;
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command, str::from_utf8};
 
 trait ProjectRoot {
     type NextHandler: ProjectRoot;
@@ -20,6 +21,16 @@ trait ProjectRoot {
                     next.handle(root);
                 }
             }
+        }
+    }
+
+    fn command(&self, command: &str, args: &[&str], error_msg: &str) -> Result<PathBuf, String> {
+        match Command::new(command).args(args).output() {
+            Ok(output) if output.status.success() => match from_utf8(&output.stdout) {
+                Ok(stdout) => Ok(stdout.trim().into()),
+                _ => Err(error_msg.into()),
+            },
+            _ => Err(error_msg.into()),
         }
     }
 

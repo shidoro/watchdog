@@ -1,36 +1,29 @@
-use super::{current_dir::CurrentDir, ProjectRoot};
-use std::{path::PathBuf, process::Command, str};
+use super::{hg_root::HgRoot, ProjectRoot};
+use std::path::PathBuf;
 
 pub struct GitRoot {
-    next: Option<CurrentDir>,
+    next: Option<HgRoot>,
 }
 
 impl GitRoot {
     pub fn new() -> Self {
         Self {
-            next: Some(CurrentDir::new()),
+            next: Some(HgRoot::new()),
         }
     }
 }
 
 impl ProjectRoot for GitRoot {
-    type NextHandler = CurrentDir;
+    type NextHandler = HgRoot;
 
     fn find(&self) -> Result<PathBuf, String> {
-        let error_msg = "Tried searching for the root project through git".into();
-        match Command::new("git")
-            .args(["rev-parse", "--show-toplevel"])
-            .output()
-        {
-            Ok(output) if output.status.success() => match str::from_utf8(&output.stdout) {
-                Ok(stdout) => Ok(stdout.trim().into()),
-                _ => Err(error_msg),
-            },
-            _ => Err(error_msg),
-        }
+        let error_msg = "Tried searching for the root project through git";
+        let args = ["rev-parse", "--show-toplevel"];
+
+        self.command("git", &args, error_msg)
     }
 
-    fn next(&self) -> &Option<CurrentDir> {
+    fn next(&self) -> &Option<HgRoot> {
         &self.next
     }
 }
